@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trust Dynamics: Financial Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: 'Inter', sans-serif;
+        }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #2563eb;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .slider-thumb::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #2563eb;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        .blur-content {
+            filter: blur(8px);
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Game Container -->
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row h-[650px]">
+        
+        <!-- Left Panel: Chart & Stats -->
+        <div class="w-full md:w-2/3 p-6 flex flex-col border-r border-gray-100">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-chart-line text-blue-600 mr-2"></i>TradeSim AI</h1>
+                    <p class="text-xs text-gray-500">Human-AI Trust Experiment</p>
+                </div>
+
+                <div class="text-right">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide">Portfolio Value</p>
+                    <p id="wallet-display" class="text-2xl font-bold text-emerald-600 transition-all duration-300">$1,000</p>
+                    <p id="profit-display" class="text-sm font-medium text-gray-400 mt-1">Profit: $0</p>
+                </div>
+            </div>
+
+            <!-- Progress Bar Section -->
+            <div class="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Performance vs Baseline</span>
+                    <span>Target: <span id="target-display" class="font-bold text-gray-700">$1,000</span></span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 relative overflow-hidden">
+                    <div id="portfolio-progress" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500 relative" style="width: 100%">
+                        <div class="absolute right-0 top-0 h-full w-2 bg-white opacity-20 animate-pulse"></div>
+                    </div>
+                </div>
+                <div class="flex justify-between text-[10px] text-gray-400 mt-1">
+                    <span>$0</span>
+                    <span id="target-label-bottom">$1k (Naive Break-Even)</span>
+                </div>
+            </div>
+
+            <!-- Chart Area -->
+            <div class="flex-grow bg-gray-50 rounded-lg border border-gray-200 relative mb-4 overflow-hidden">
+                <canvas id="marketChart" class="w-full h-full"></canvas>
+                <!-- Turn Counter Overlay -->
+                <div class="absolute top-4 right-4 bg-white px-3 py-1 rounded-full shadow text-sm font-semibold text-gray-600">
+                    Turn: <span id="turn-display">1</span>/50
+                </div>
+            </div>
+
+            <!-- Action Log -->
+            <div class="h-32 bg-gray-900 rounded-lg p-3 overflow-y-auto font-mono text-xs text-gray-300" id="game-log">
+                <div class="text-gray-500 italic">> System initialized. Waiting for market data...</div>
+            </div>
+        </div>
+
+        <!-- Right Panel: AI & Controls -->
+        <div class="w-full md:w-1/3 p-6 bg-gray-50 flex flex-col justify-between">
+            
+            <!-- AI Suggestion Card -->
+            <div class="rounded-lg shadow-md p-5 mb-6 relative overflow-hidden transition-all duration-300 border-l-4 border-gray-300 bg-gray-50" id="ai-card">
+                <div class="absolute top-0 left-0 w-1 h-full bg-gray-300 opacity-0" id="ai-indicator"></div>
+                
+                <!-- Header (Always Visible) -->
+                <div class="flex justify-between items-center mb-3 relative z-10">
+                    <h3 class="font-bold text-gray-700 flex items-center">
+                        <i class="fas fa-robot text-gray-400 mr-2"></i>AI Analyst
+                    </h3>
+                    <span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">v2.4</span>
+                </div>
+                
+                <!-- Content Container -->
+                <div id="ai-content-container" class="relative min-h-[80px]">
+                    <!-- The Actual AI Data -->
+                    <div id="ai-data-content" class="transition-all duration-300">
+                        <div class="mb-4">
+                            <p class="text-xs text-gray-500 uppercase font-semibold tracking-wider">Recommendation</p>
+                            <p id="ai-prediction" class="text-3xl font-black text-gray-400 mt-1 flex items-center gap-2">Locked</p>
+                        </div>
+                        <!-- Confidence Bar Removed -->
+                    </div>
+
+                    <!-- Reveal Overlay Button -->
+                    <div id="ai-overlay" class="absolute inset-0 flex items-center justify-center z-20 bg-white/50 backdrop-blur-sm rounded-lg">
+                        <button onclick="revealAI()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded-lg shadow-lg transform transition active:scale-95 flex flex-col items-center">
+                            <span><i class="fas fa-eye mr-1"></i> REVEAL</span>
+                            <span class="text-[10px] opacity-90 font-normal">Costs 25% Profit</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Controls -->
+            <div class="flex-grow flex flex-col justify-end">
+                <div class="mb-6">
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="text-sm font-semibold text-gray-700">Invest Amount</label>
+                        <span id="invest-amount-display" class="text-2xl font-bold text-blue-600">$0</span>
+                    </div>
+                    <!-- Range max is dynamic now -->
+                    <input type="range" id="invest-slider" min="0" max="1000" value="0" step="50" 
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb">
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>$0 (No Trust)</span>
+                        <span id="max-invest-label">$1000 (Max)</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button id="btn-up" onclick="executeTurn('up')" 
+                        class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-lg shadow-lg transform transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center">
+                        <i class="fas fa-arrow-trend-up mb-1"></i>
+                        PREDICT UP
+                    </button>
+                    <button id="btn-down" onclick="executeTurn('down')" 
+                        class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg shadow-lg transform transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center">
+                        <i class="fas fa-arrow-trend-down mb-1"></i>
+                        PREDICT DOWN
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Welcome / Rules Modal -->
+    <div id="welcome-modal" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 text-left relative overflow-hidden">
+            <!-- Decorative Background Element -->
+            <div class="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full -mr-8 -mt-8 opacity-50"></div>
+
+            <div class="flex items-center mb-6 relative z-10">
+                <div class="w-14 h-14 bg-blue-600 rounded-lg flex items-center justify-center mr-4 shadow-lg">
+                    <i class="fas fa-chart-line text-2xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-black text-gray-900 tracking-tight">TradeSim AI</h1>
+                    <p class="text-blue-600 font-medium">Human-AI Trust Dynamics Experiment</p>
+                </div>
+            </div>
+
+            <div class="space-y-5 mb-8 text-gray-600">
+                <p class="text-lg">You are a high-frequency trader managing a portfolio. Your goal is to maximize your profits over <strong>50 turns</strong>.</p>
+                
+                <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                    <h3 class="font-bold text-gray-800 mb-3 flex items-center"><i class="fas fa-gavel mr-2 text-blue-500"></i> Game Rules</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-2"></i> <span><strong>Predict</strong> if the market will go UP or DOWN.</span></li>
+                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-2"></i> <span><strong>Invest</strong> up to $1,000 per turn using the slider.</span></li>
+                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-2"></i> <span><strong>Help:</strong> There is an AI to help you, but it comes at a cost and may make mistakes. </span></li>
+                        <li class="flex items-start"><i class="fas fa-check text-green-500 mt-1 mr-2"></i> <span><strong>Prize:</strong> The profit you make over the initial $1,000 is your prize money. </span></li>
+                    </ul>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="border-2 border-emerald-100 bg-emerald-50 p-4 rounded-xl">
+                        <h4 class="font-bold text-emerald-800 text-sm mb-1 uppercase tracking-wider"><i class="fas fa-user mr-1"></i> Independent Trade</h4>
+                        <p class="text-xs text-emerald-700 mb-2">Trust your own intuition. No AI help.</p>
+                        <p class="font-bold text-lg text-emerald-600">+50% Profit <span class="text-xs font-normal text-gray-500">(on Win)</span></p>
+                    </div>
+                    <div class="border-2 border-blue-100 bg-blue-50 p-4 rounded-xl">
+                        <h4 class="font-bold text-blue-800 text-sm mb-1 uppercase tracking-wider"><i class="fas fa-robot mr-1"></i> Assisted Trade</h4>
+                        <p class="text-xs text-blue-700 mb-2">Reveal AI advice. Costs a fee.</p>
+                        <p class="font-bold text-lg text-blue-600">+25% Profit <span class="text-xs font-normal text-gray-500">(on Win)</span></p>
+                    </div>
+                </div>
+                
+                <p class="text-xs font-semibold text-red-500 bg-red-50 p-2 rounded text-center border border-red-100">
+                    <i class="fas fa-exclamation-triangle mr-1"></i> Warning: If your prediction is wrong, you lose 100% of your invested amount.
+                </p>
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 px-6 rounded-xl transition-all transform hover:scale-[1.02] shadow-xl text-lg flex items-center justify-center">
+                <span>Start Experiment</span> <i class="fas fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Results Modal -->
+    <div id="result-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-8 text-center">
+            <div class="flex items-center justify-center mb-4">
+                <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                    <i class="fas fa-clipboard-check text-xl text-blue-600"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800">Experiment Complete</h2>
+            </div>
+            
+            <p class="text-gray-500 text-sm mb-6">Here is your Trust Recovery Trajectory.</p>
+            
+            <div class="h-48 w-full bg-white border border-gray-200 rounded-lg mb-6 relative shadow-inner">
+                <canvas id="trustChart" class="w-full h-full rounded-lg"></canvas>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 text-left mb-6">
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide">Final Portfolio</p>
+                    <p id="final-balance" class="font-bold text-xl text-gray-800">-</p>
+                </div>
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide">Recovery Speed</p>
+                    <p id="recovery-time" class="font-bold text-xl text-blue-600">-</p>
+                </div>
+            </div>
+
+            <!-- Survey Section -->
+            <div id="survey-container" class="mb-4 border-t border-gray-100 pt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-3">
+                    How accurate do you think the AI was?
+                </label>
+                <div class="flex items-center space-x-3 mb-2">
+                    <span class="text-xs text-gray-500 font-bold">0%</span>
+                    <input type="range" id="accuracy-slider" min="0" max="100" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    <span class="text-xs text-gray-500 font-bold">100%</span>
+                </div>
+                <p class="text-center font-bold text-2xl text-blue-600 mb-4"><span id="accuracy-display">50</span>%</p>
+                
+                <button onclick="submitSurvey()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-md">
+                    Submit Feedback
+                </button>
+            </div>
+
+            <!-- Feedback Result (Hidden Initially) -->
+            <div id="feedback-container" class="hidden mb-4 border-t border-gray-100 pt-4 bg-blue-50 rounded-lg p-4">
+                <div class="grid grid-cols-2 gap-4 text-center mb-2">
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase">Your Guess</p>
+                        <p id="perceived-acc" class="font-bold text-2xl text-gray-800">-%</p>
+                    </div>
+                    <div class="border-l border-blue-200">
+                        <p class="text-xs text-gray-500 uppercase">Actual Accuracy</p>
+                        <p id="actual-acc" class="font-bold text-2xl text-blue-600">-</p>
+                    </div>
+                </div>
+                <p class="text-[10px] text-gray-400 text-center mb-4"> (40 correct / 50 turns)</p>
+                
+                <button onclick="resetGame()" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-6 rounded-lg transition-colors">
+                    Restart Experiment
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration & State ---
+        const config = {
+            startBalance: 1000, 
+            maxTurns: 50, 
+            recoveryThreshold: 800, 
+            crashCount: 10, 
+            historyPoints: 15 
+        };
+
+        const normalTurns = config.maxTurns - config.crashCount;
+        const naiveGain = normalTurns * 250; 
+        const naiveLoss = config.crashCount * 1000;
+        const targetBalance = config.startBalance + naiveGain - naiveLoss; 
+
+        let state = {
+            balance: config.startBalance,
+            turn: 1,
+            marketPrice: 100,
+            prices: [], 
+            trustHistory: [], 
+            recoveredAt: null,
+            lastCrashTurn: 0,
+            crashTurns: [], 
+            script: [], 
+            aiCurrentPrediction: null,
+            aiRevealed: false,
+            currentTurnData: null, // Stores hidden AI data
+        };
+
+        // --- Core Game Logic ---
+
+        function generateHistory() {
+            let current = 100;
+            const history = [100];
+            for(let i=0; i<config.historyPoints; i++) {
+                const delta = (Math.random() - 0.5) * 8; 
+                current -= delta;
+                history.unshift(current);
+            }
+            return history;
+        }
+
+        // --- UPDATED SCRIPT GENERATION LOGIC (Fully Random) ---
+        function generateScript() {
+            const newScript = [];
+            
+            // Randomly select crash turns across entire duration (1-50)
+            const possibleTurns = [];
+            for(let i=1; i<=config.maxTurns; i++) possibleTurns.push(i);
+            
+            // Shuffle
+            for (let i = possibleTurns.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [possibleTurns[i], possibleTurns[j]] = [possibleTurns[j], possibleTurns[i]];
+            }
+            
+            state.crashTurns = possibleTurns.slice(0, config.crashCount).sort((a,b) => a-b);
+            state.lastCrashTurn = state.crashTurns[state.crashTurns.length - 1];
+
+            // Generate full 50 turn script
+            for (let i = 1; i <= config.maxTurns; i++) {
+                if (state.crashTurns.includes(i)) {
+                    // AI MISTAKE (Randomize type)
+                    const isFalsePositive = Math.random() > 0.5;
+
+                    if (isFalsePositive) {
+                        // Type 1: AI says UP, Market CRASHES (Down)
+                        newScript.push({ type: 'crash_down', delta: -(Math.floor(Math.random() * 15) + 15) });
+                    } else {
+                        // Type 2: AI says DOWN, Market RALLIES (Up)
+                        newScript.push({ type: 'crash_up', delta: (Math.floor(Math.random() * 15) + 15) });
+                    }
+                } else {
+                    const type = Math.random() > 0.5 ? 'up' : 'down';
+                    const delta = type === 'up' ? (Math.floor(Math.random() * 6) + 3) : -(Math.floor(Math.random() * 5) + 3);
+                    newScript.push({ type, delta });
+                }
+            }
+            state.script = newScript;
+        }
+
+        // --- DOM Elements ---
+        const ui = {
+            wallet: document.getElementById('wallet-display'),
+            profitDisplay: document.getElementById('profit-display'),
+            turn: document.getElementById('turn-display'),
+            slider: document.getElementById('invest-slider'),
+            investDisplay: document.getElementById('invest-amount-display'),
+            maxInvestLabel: document.getElementById('max-invest-label'),
+            btnUp: document.getElementById('btn-up'),
+            btnDown: document.getElementById('btn-down'),
+            log: document.getElementById('game-log'),
+            aiPred: document.getElementById('ai-prediction'),
+            aiCard: document.getElementById('ai-card'),
+            aiIndicator: document.getElementById('ai-indicator'),
+            aiDataContent: document.getElementById('ai-data-content'),
+            aiOverlay: document.getElementById('ai-overlay'),
+            marketCanvas: document.getElementById('marketChart'),
+            trustCanvas: document.getElementById('trustChart'),
+            modal: document.getElementById('result-modal'),
+            welcomeModal: document.getElementById('welcome-modal'), // Welcome Modal
+            finalBalance: document.getElementById('final-balance'),
+            recoveryTime: document.getElementById('recovery-time'),
+            progressBar: document.getElementById('portfolio-progress'),
+            targetDisplay: document.getElementById('target-display'),
+            targetLabelBottom: document.getElementById('target-label-bottom'),
+            // Survey Elements
+            accuracySlider: document.getElementById('accuracy-slider'),
+            accuracyDisplay: document.getElementById('accuracy-display'),
+            surveyContainer: document.getElementById('survey-container'),
+            feedbackContainer: document.getElementById('feedback-container'),
+            perceivedAcc: document.getElementById('perceived-acc'),
+            actualAcc: document.getElementById('actual-acc')
+        };
+
+        // --- Initialization ---
+        function init() {
+            // Just bind the slider visual update
+            ui.slider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                ui.investDisplay.innerText = `$${val}`;
+                if (val < 300) ui.investDisplay.className = "text-2xl font-bold text-orange-500";
+                else if (val > 800) ui.investDisplay.className = "text-2xl font-bold text-emerald-600";
+                else ui.investDisplay.className = "text-2xl font-bold text-blue-600";
+            });
+
+            // Bind Accuracy Slider
+            ui.accuracySlider.addEventListener('input', (e) => {
+                ui.accuracyDisplay.innerText = e.target.value;
+            });
+
+            // Start Game Logic but keep modal open
+            resetGame();
+        }
+
+        function startGame() {
+            ui.welcomeModal.classList.add('hidden');
+        }
+
+        function resetGame() {
+            // Reset Game State
+            state.balance = config.startBalance;
+            state.turn = 1;
+            state.trustHistory = [];
+            state.recoveredAt = null;
+            state.prices = generateHistory();
+            
+            // UI Reset
+            ui.wallet.innerText = `$${state.balance.toLocaleString()}`;
+            ui.wallet.className = "text-2xl font-bold text-emerald-600 transition-all duration-300";
+            ui.profitDisplay.innerText = "Profit: $0";
+            ui.profitDisplay.className = "text-sm font-medium text-gray-400 mt-1";
+            ui.modal.classList.add('hidden');
+            // Ensure welcome modal is hidden on restart (it only shows on page load)
+            // But if user wants to see instructions again? Usually restart implies playing again immediately.
+            // We'll keep welcome modal hidden here.
+            
+            ui.log.innerHTML = '';
+            addLog(`System Initialized. Failures distributed randomly over 50 turns.`, 'text-blue-600 font-bold');
+            
+            // Reset Modal Survey State
+            ui.surveyContainer.classList.remove('hidden');
+            ui.feedbackContainer.classList.add('hidden');
+            ui.accuracySlider.value = 50;
+            ui.accuracyDisplay.innerText = "50";
+
+            // Init Progress UI
+            ui.targetDisplay.innerText = `$${targetBalance.toLocaleString()}`;
+            ui.targetLabelBottom.innerText = `$${(targetBalance/1000).toFixed(0)}k ( Initial Value - Break-Even)`;
+            updateProgressBar();
+
+            generateScript();
+            updateChart();
+            setupTurn();
+        }
+
+        function submitSurvey() {
+            const perceived = ui.accuracySlider.value;
+            // Calculate actual accuracy
+            const actual = ((config.maxTurns - config.crashCount) / config.maxTurns * 100).toFixed(0);
+            
+            ui.perceivedAcc.innerText = `${perceived}%`;
+            ui.actualAcc.innerText = `${actual}%`;
+            
+            // Determine Color for Perceived (Green if close, Red if far)
+            const diff = Math.abs(perceived - actual);
+            if(diff < 10) ui.perceivedAcc.className = "font-bold text-2xl text-emerald-600";
+            else ui.perceivedAcc.className = "font-bold text-2xl text-red-600";
+
+            ui.surveyContainer.classList.add('hidden');
+            ui.feedbackContainer.classList.remove('hidden');
+        }
+
+        function updateProgressBar() {
+            let pct = (state.balance / targetBalance) * 100;
+            // Ensure negative balance shows 0% progress
+            if (pct < 0) pct = 0;
+            let width = pct > 100 ? 100 : pct;
+            ui.progressBar.style.width = `${width}%`;
+            
+            if (state.balance >= targetBalance) {
+                ui.progressBar.className = "bg-yellow-500 h-2.5 rounded-full transition-all duration-500 relative shadow-[0_0_10px_rgba(234,179,8,0.5)]";
+            } else if (state.balance < config.startBalance) {
+                // Keep it red if below start, including negative
+                ui.progressBar.className = "bg-red-500 h-2.5 rounded-full transition-all duration-500 relative";
+            } else {
+                ui.progressBar.className = "bg-blue-600 h-2.5 rounded-full transition-all duration-500 relative";
+            }
+        }
+
+        function revealAI() {
+            state.aiRevealed = true;
+            ui.aiOverlay.style.display = 'none';
+            
+            // Apply visual update based on stored data
+            const { prediction, confidence, direction } = state.currentTurnData;
+            
+            if (direction === 'up') {
+                ui.aiCard.className = "rounded-lg shadow-md p-5 mb-6 relative overflow-hidden transition-all duration-300 border-l-4 border-emerald-500 bg-emerald-50";
+                ui.aiIndicator.className = "absolute top-0 left-0 w-full h-full bg-emerald-500 opacity-0"; 
+                ui.aiPred.innerHTML = 'UP <i class="fas fa-arrow-trend-up ml-2"></i>';
+                ui.aiPred.className = "text-4xl font-black text-emerald-600 mt-1 flex items-center";
+            } else {
+                ui.aiCard.className = "rounded-lg shadow-md p-5 mb-6 relative overflow-hidden transition-all duration-300 border-l-4 border-rose-500 bg-rose-50";
+                ui.aiIndicator.className = "absolute top-0 left-0 w-full h-full bg-rose-500 opacity-0";
+                ui.aiPred.innerHTML = 'DOWN <i class="fas fa-arrow-trend-down ml-2"></i>';
+                ui.aiPred.className = "text-4xl font-black text-rose-600 mt-1 flex items-center";
+            }
+        }
+
+        function setupTurn() {
+            if (state.turn > config.maxTurns) {
+                endGame();
+                return;
+            }
+
+            // --- Updated Slider Logic: Always allow up to $1000 invest ---
+            // Allow investing $1000 regardless of balance (Margin Trading)
+            const maxInvest = 1000;
+            ui.slider.max = maxInvest;
+            ui.maxInvestLabel.innerText = `$${maxInvest} (Max)`;
+
+            ui.turn.innerText = state.turn;
+            ui.slider.value = 0; 
+            ui.investDisplay.innerText = "$0";
+            state.aiRevealed = false; 
+            
+            // RESET AI CARD TO NEUTRAL STATE
+            ui.aiOverlay.style.display = 'flex';
+            ui.aiPred.innerHTML = '<span class="text-gray-400">Locked</span>';
+            ui.aiPred.className = "text-3xl font-black text-gray-400 mt-1 flex items-center gap-2";
+            ui.aiCard.className = "rounded-lg shadow-md p-5 mb-6 relative overflow-hidden transition-all duration-300 border-l-4 border-gray-300 bg-gray-50";
+            ui.aiIndicator.className = "absolute top-0 left-0 w-full h-full bg-gray-300 opacity-0";
+            
+            ui.btnUp.disabled = false;
+            ui.btnDown.disabled = false;
+            ui.btnUp.classList.remove('opacity-50', 'cursor-not-allowed');
+            ui.btnDown.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            const scenario = state.script[state.turn - 1];
+            let prediction = "";
+            let confidence = 0;
+            let direction = ""; 
+
+            if (scenario.type === 'crash_down') {
+                // Market DOWN, AI says UP
+                state.aiCurrentPrediction = 'up';
+                direction = 'up';
+                prediction = "BUY / UP";
+                confidence = Math.floor(Math.random() * (98 - 90) + 90);
+            } else if (scenario.type === 'crash_up') {
+                // Market UP, AI says DOWN
+                state.aiCurrentPrediction = 'down';
+                direction = 'down';
+                prediction = "SELL / DOWN";
+                confidence = Math.floor(Math.random() * (98 - 90) + 90);
+            } else {
+                // Normal
+                state.aiCurrentPrediction = scenario.type;
+                direction = scenario.type;
+                prediction = scenario.type === 'up' ? "BUY / UP" : "SELL / DOWN";
+                confidence = Math.floor(Math.random() * (95 - 80) + 80);
+            }
+
+            // Store logic for reveal
+            state.currentTurnData = { prediction, confidence, direction };
+        }
+
+        function executeTurn(userDirection) {
+            ui.btnUp.disabled = true;
+            ui.btnDown.disabled = true;
+            ui.btnUp.classList.add('opacity-50', 'cursor-not-allowed');
+            ui.btnDown.classList.add('opacity-50', 'cursor-not-allowed');
+
+            const invest = parseInt(ui.slider.value);
+            const scenario = state.script[state.turn - 1];
+            
+            // --- TRUST LOGIC ---
+            let trustScore = 0;
+            if (state.aiRevealed && userDirection === state.aiCurrentPrediction) {
+                trustScore = invest;
+            } else {
+                trustScore = 0; 
+            }
+            
+            state.trustHistory.push(trustScore);
+
+            if (state.turn > state.lastCrashTurn) {
+                if (trustScore >= config.recoveryThreshold && state.recoveredAt === null) {
+                    state.recoveredAt = state.turn - state.lastCrashTurn;
+                }
+            } else {
+                state.recoveredAt = null; 
+            }
+
+            // Determine Real Market Move
+            let marketMove = 'up';
+            if (scenario.type === 'crash_down' || scenario.type === 'down') {
+                marketMove = 'down';
+            } else if (scenario.type === 'crash_up' || scenario.type === 'up') {
+                marketMove = 'up';
+            }
+
+            const userWon = (userDirection === marketMove);
+
+            let profit = 0;
+            let logMsg = "";
+            let logClass = "";
+
+            if (userWon) {
+                const multiplier = state.aiRevealed ? 0.25 : 0.50;
+                profit = Math.floor(invest * multiplier); 
+                
+                if (!state.aiRevealed) {
+                    logMsg = `Turn ${state.turn}: INDEPENDENT WIN! +50% ROI ($${profit}).`;
+                    logClass = "text-purple-600 font-bold";
+                } else if (userDirection !== state.aiCurrentPrediction) {
+                    logMsg = `Turn ${state.turn}: Contrarian Win! Paid for AI but ignored it. +$${profit}.`;
+                    logClass = "text-indigo-600 font-bold";
+                } else {
+                    logMsg = `Turn ${state.turn}: Assisted Win. +25% ROI ($${profit}).`;
+                    logClass = "text-emerald-500";
+                }
+            } else {
+                profit = -invest;
+                // Detect if it was an AI Lie that caused the loss
+                const aiLied = (scenario.type === 'crash_down' || scenario.type === 'crash_up');
+                const followedLie = state.aiRevealed && (userDirection === state.aiCurrentPrediction) && aiLied;
+
+                if (followedLie) {
+                    logMsg = `Turn ${state.turn}: 🚨 AI ERROR! It lied. You lost $${invest}.`;
+                    logClass = "text-red-500 font-bold";
+                     
+                    ui.aiCard.classList.add('shake');
+                    ui.aiCard.classList.remove('border-blue-100'); // Note: borders applied on reveal
+                    ui.aiCard.classList.add('border-red-500', 'bg-red-50');
+                } else {
+                    logMsg = `Turn ${state.turn}: Loss. Market went ${marketMove}. You lost $${invest}.`;
+                    logClass = "text-red-400";
+                }
+            }
+
+            state.balance += profit;
+            
+            state.marketPrice += scenario.delta;
+            state.prices.push(state.marketPrice);
+
+            ui.wallet.innerText = `$${state.balance.toLocaleString()}`;
+            // If negative, style it red
+            if (state.balance < 0) {
+                ui.wallet.className = "text-2xl font-bold text-red-600 transition-all duration-300";
+            } else {
+                ui.wallet.className = "text-2xl font-bold text-emerald-600 transition-all duration-300";
+            }
+
+            // Update Profit Display
+            const currentProfit = state.balance - config.startBalance;
+            const sign = currentProfit >= 0 ? "+" : "-";
+            const colorClass = currentProfit >= 0 ? "text-emerald-500" : "text-red-500";
+            ui.profitDisplay.innerText = `Profit: ${sign}$${Math.abs(currentProfit).toLocaleString()}`;
+            ui.profitDisplay.className = `text-sm font-medium ${colorClass} mt-1`;
+
+            updateProgressBar();
+            addLog(logMsg, logClass);
+            updateChart();
+
+            state.turn++;
+            setTimeout(setupTurn, 1000); 
+        }
+
+        function addLog(msg, colorClass) {
+            const div = document.createElement('div');
+            div.className = `mb-1 ${colorClass} fade-in`;
+            div.innerText = msg;
+            ui.log.prepend(div);
+        }
+
+        function endGame() {
+            ui.modal.classList.remove('hidden');
+            ui.finalBalance.innerText = `$${state.balance.toLocaleString()}`;
+            // If negative final balance, red text
+            if (state.balance < 0) ui.finalBalance.className = "font-bold text-2xl text-red-600";
+            
+            ui.recoveryTime.innerText = state.recoveredAt ? `${state.recoveredAt} Turns` : "Trust Broken";
+            if (!state.recoveredAt) ui.recoveryTime.className = "font-bold text-2xl text-red-600";
+            
+            setTimeout(drawTrustChart, 100);
+        }
+
+        // --- Canvas Drawing ---
+        function updateChart() {
+            const ctx = ui.marketCanvas.getContext('2d');
+            const w = ui.marketCanvas.width = ui.marketCanvas.offsetWidth;
+            const h = ui.marketCanvas.height = ui.marketCanvas.offsetHeight;
+            
+            ctx.clearRect(0, 0, w, h);
+            
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let i=0; i<w; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,h); }
+            for(let i=0; i<h; i+=30) { ctx.moveTo(0,i); ctx.lineTo(w,i); }
+            ctx.stroke();
+
+            if (state.prices.length < 1) return;
+
+            const minP = Math.min(...state.prices) - 10;
+            const maxP = Math.max(...state.prices) + 10;
+            const range = maxP - minP || 1;
+            
+            const totalPoints = config.historyPoints + config.maxTurns;
+            const stepX = w / totalPoints;
+
+            const startX = config.historyPoints * stepX + 10;
+            ctx.strokeStyle = '#9ca3af';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(startX, 0);
+            ctx.lineTo(startX, h);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '10px sans-serif';
+            ctx.fillText("START", startX + 4, 12);
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#2563eb';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            state.prices.forEach((price, i) => {
+                const x = i * stepX + 10;
+                const y = h - ((price - minP) / range * (h - 40)) - 20;
+                if(i===0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            state.prices.forEach((price, i) => {
+                const x = i * stepX + 10;
+                const y = h - ((price - minP) / range * (h - 40)) - 20;
+                
+                const turnNum = i - config.historyPoints;
+                const isCrash = state.crashTurns.includes(turnNum);
+                
+                if (turnNum <= 0) {
+                    ctx.strokeStyle = '#93c5fd'; 
+                } else {
+                    ctx.strokeStyle = isCrash ? '#ef4444' : '#2563eb';
+                }
+                
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        }
+
+        // --- IMPROVED TRUST CHART RENDERER ---
+        function drawTrustChart() {
+            const ctx = ui.trustCanvas.getContext('2d');
+            const w = ui.trustCanvas.width = ui.trustCanvas.offsetWidth;
+            const h = ui.trustCanvas.height = ui.trustCanvas.offsetHeight;
+            
+            const padLeft = 60;
+            const padBottom = 40;
+            const padTop = 30;
+            const graphW = w - padLeft - 20;
+            const graphH = h - padBottom - padTop;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const recoveryY = padTop + graphH - (config.recoveryThreshold / 1000 * graphH);
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.05)'; 
+            ctx.fillRect(padLeft, padTop, graphW, recoveryY - padTop);
+            
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(padLeft, recoveryY);
+            ctx.lineTo(padLeft + graphW, recoveryY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#059669';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.fillText("TARGET ZONE", padLeft + 10, recoveryY - 8);
+
+            ctx.strokeStyle = '#f3f4f6';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let i = 0; i <= 4; i++) {
+                const y = padTop + (graphH * (i/4));
+                ctx.moveTo(padLeft, y);
+                ctx.lineTo(padLeft + graphW, y);
+            }
+            ctx.stroke();
+
+            const stepX = graphW / config.maxTurns;
+            const points = state.trustHistory.map((val, i) => ({
+                x: padLeft + (i * stepX) + (stepX/2),
+                y: padTop + graphH - (val / 1000 * graphH)
+            }));
+
+            if (points.length > 0) {
+                const gradient = ctx.createLinearGradient(0, padTop, 0, h - padBottom);
+                gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+                gradient.addColorStop(1, 'rgba(37, 99, 235, 0.0)');
+
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, h - padBottom);
+                ctx.lineTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                ctx.lineTo(points[points.length-1].x, h - padBottom);
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                ctx.strokeStyle = '#2563eb';
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+                ctx.stroke();
+            }
+
+            state.crashTurns.forEach(turn => {
+                if (state.trustHistory.length >= turn) {
+                    const crashX = padLeft + ((turn - 1) * stepX) + (stepX/2);
+                    
+                    ctx.strokeStyle = '#ef4444'; 
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(crashX, padTop);
+                    ctx.lineTo(crashX, h - padBottom);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.fillStyle = '#fee2e2';
+                    ctx.beginPath();
+                    ctx.arc(crashX, padTop - 10, 8, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText("X", crashX, padTop - 7);
+                }
+            });
+
+            points.forEach((p, i) => {
+                const turnNum = i + 1;
+                const isCrash = state.crashTurns.includes(turnNum);
+                
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = isCrash ? '#ef4444' : '#2563eb';
+                ctx.stroke();
+            });
+
+            ctx.fillStyle = '#6b7280';
+            ctx.textAlign = 'right';
+            ctx.fillText("$1000", padLeft - 10, padTop + 4);
+            ctx.fillText("$0", padLeft - 10, padTop + graphH);
+            
+            ctx.textAlign = 'center';
+            ctx.fillText("Start", padLeft + (stepX/2), h - 10);
+            ctx.fillText("End", padLeft + graphW - (stepX/2), h - 10);
+        }
+
+        window.addEventListener('resize', () => {
+            updateChart();
+        });
+
+        init();
+    </script>
+</body>
+</html>
